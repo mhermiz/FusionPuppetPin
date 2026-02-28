@@ -5,6 +5,7 @@ FuRegisterClass("PuppetPin", CT_Tool, {
     REGS_OpIconString = "PP1",
 })
 
+-- Hard cap used for UI generation and runtime loops.
 local MAX_PINS = 32
 PinEnabled = {}
 PinPos = {}
@@ -46,6 +47,7 @@ InRigMode = nil
 InLocatorEnable = nil
 InLocatorMode = nil
 
+-- Cached mesh payload to avoid rebuilding expensive geometry every frame.
 MeshCache = {
     key = nil,
     region = nil,
@@ -58,9 +60,11 @@ RebuildMeshScript = [[
 MeshCache.key = nil
 ]]
 
+-- Temporary countdown used to force mesh preview visibility after edits.
 MeshPreviewCountdown = 0
 PinBindPose = {}
 DeformCache = { verts = {} }
+-- Reusable runtime tables to reduce allocations during playback/drags.
 RuntimeCache = {
     pins = {},
     activePins = {},
@@ -70,26 +74,29 @@ RuntimeCache = {
     frame = 0,
 }
 
--- Create Inputs/Outputs
+-- Create all inspector controls and IO ports for the Fuse.
 function Create()
-    -- Image input
+    -- Primary image stream to be deformed.
     InImage = self:AddInput("Image", "Image", {
         LINKID_DataType = "Image",
         LINK_Main = 1
     })
 
+    -- Optional mask used only for mesh extraction/building.
     InMeshMask = self:AddInput("Secondary Mesh Mask", "MeshMask", {
         LINKID_DataType = "Image",
         INPID_InputControl = "ImageControl",
         INP_Required = false,
     })
 
+    -- Optional mask used during deformation to lock/weight movement.
     InWeightMask = self:AddInput("Secondary Weight Mask", "WeightMask", {
         LINKID_DataType = "Image",
         INPID_InputControl = "ImageControl",
         INP_Required = false,
     })
 
+    -- Mesh page: controls that define mesh generation and debug display.
     self:AddControlPage("Mesh")
     self:BeginControlNest("Mesh Build", "MeshNest", true, {})
 
@@ -225,7 +232,9 @@ function Create()
 
     self:EndControlNest()
 
-    -- Create tab order: Mesh, Pins, Deformers, Solver, Locators, Overlay
+    -- Pre-register pages to stabilize tab ordering in the inspector.
+    -- Final content for each page is added below.
+    -- Intended order: Mesh, Pins, Deformers, Solver, Locators, Overlay.
     self:AddControlPage("Pins")
     self:AddControlPage("Deformers")
     self:AddControlPage("Solver")
@@ -233,6 +242,7 @@ function Create()
     self:AddControlPage("Overlay")
     self:AddControlPage("Solver")
 
+    -- Solver page: global deformation behavior shared across all pins.
     InFalloffMode = self:AddInput("Falloff Mode", "FalloffMode", {
         LINKID_DataType = "Number",
         INPID_InputControl = "ComboControl",
@@ -267,6 +277,7 @@ function Create()
         INP_Default = 0.20,
     })
 
+    -- Overlay page: debug visualization controls.
     self:AddControlPage("Overlay")
 
     InQualityMode = self:AddInput("Quality", "QualityMode", {
@@ -299,6 +310,7 @@ function Create()
         IC_Visible = false,
     })
 
+    -- Deformers page: root lock + placeholders for upcoming deformer systems.
     self:AddControlPage("Deformers")
     self:BeginControlNest("Root Lock", "RootLockNest", true, {})
 
@@ -366,6 +378,7 @@ function Create()
     })
     self:EndControlNest()
 
+    -- Pins page: global rig mode and weight-mask controls.
     self:AddControlPage("Pins")
     self:BeginControlNest("Pin Global", "PinGlobalNest", true, {})
     InRigMode = self:AddInput("Rig Mode", "RigMode", {
@@ -394,9 +407,11 @@ function Create()
     })
     self:EndControlNest()
 
+    -- Generate repeated UI blocks for each pin slot.
     for i = 1, MAX_PINS do
         self:BeginControlNest("Pin " .. i, "PinNest" .. i, i == 1, {})
 
+        -- Enable toggle controls visibility and runtime participation.
         PinEnabled[i] = self:AddInput("Enable", "Enable" .. i, {
             LINKID_DataType = "Number",
             INPID_InputControl = "CheckboxControl",
@@ -405,6 +420,7 @@ function Create()
             INP_DoNotifyChanged = true,
         })
 
+        -- Viewer handle for this pin (shown by default only for pin 1).
         PinPos[i] = self:AddInput("Position", "Pin" .. i, {
             LINKID_DataType = "Point",
             INPID_InputControl = "OffsetControl",
@@ -416,6 +432,7 @@ function Create()
         })
         PinPos[i]:SetAttrs({ PC_Visible = (i == 1) })
 
+        -- Translation influence strength.
         PinStrength[i] = self:AddInput("Pull", "Strength" .. i, {
             LINKID_DataType = "Number",
             INPID_InputControl = "SliderControl",
@@ -427,6 +444,7 @@ function Create()
             IC_Visible = (i == 1),
         })
 
+        -- Influence radius in normalized image space.
         PinRadius[i] = self:AddInput("Radius", "Radius" .. i, {
             LINKID_DataType = "Number",
             INPID_InputControl = "SliderControl",
@@ -438,6 +456,7 @@ function Create()
             IC_Visible = (i == 1),
         })
 
+        -- Local rotational deformation around pin center.
         PinRotation[i] = self:AddInput("Rotation", "Rotation" .. i, {
             LINKID_DataType = "Number",
             INPID_InputControl = "SliderControl",
@@ -449,6 +468,7 @@ function Create()
             IC_Visible = (i == 1),
         })
 
+        -- Radial expansion/contraction deformation.
         PinExpansion[i] = self:AddInput("Expansion", "Expansion" .. i, {
             LINKID_DataType = "Number",
             INPID_InputControl = "SliderControl",
@@ -463,6 +483,7 @@ function Create()
         self:EndControlNest()
     end
 
+    -- Locators page: placeholders for output tracking channels (next phase).
     self:AddControlPage("Locators")
     self:BeginControlNest("Locators", "LocatorsNest", true, {})
     InLocatorEnable = self:AddInput("Enable Locators", "LocatorEnable", {
@@ -492,6 +513,7 @@ function Create()
     })
 end
 
+-- Show/hide per-pin controls when a pin is enabled/disabled.
 local function setPinUiVisible(i, enabled)
     local show = enabled and true or false
     PinPos[i]:SetAttrs({ IC_Visible = show, PC_Visible = show })
@@ -501,10 +523,12 @@ local function setPinUiVisible(i, enabled)
     PinExpansion[i]:SetAttrs({ IC_Visible = show })
 end
 
+-- Only show overlay opacity when overlay itself is enabled.
 local function setDebugUiVisible(enabled)
     InDebugAlpha:SetAttrs({ IC_Visible = enabled and true or false })
 end
 
+-- Toggle root lock sub-controls visibility.
 local function setRootLockUiVisible(enabled)
     local show = enabled and true or false
     InRootLockPos:SetAttrs({ IC_Visible = show, PC_Visible = show })
@@ -512,6 +536,7 @@ local function setRootLockUiVisible(enabled)
     InRootLockStrength:SetAttrs({ IC_Visible = show })
 end
 
+-- Handle inspector interactions that need immediate side effects.
 function NotifyChanged(inp, param, time)
     if param == nil then return end
 
@@ -560,6 +585,7 @@ function NotifyChanged(inp, param, time)
 
 end
 
+-- Deterministic color palette so each pin gets a stable debug color.
 local function pinDebugColor(i)
     -- Deterministic hue wheel so each pin gets a distinct color across many pins.
     local h = ((i - 1) * 0.61803398875) % 1.0
@@ -588,12 +614,14 @@ local function pinDebugColor(i)
     return r + m, g + m, b + m
 end
 
+-- Utility clamp used throughout numeric input and geometry code.
 local function clamp(v, lo, hi)
     if v < lo then return lo end
     if v > hi then return hi end
     return v
 end
 
+-- Extract a usable mask scalar from various image channel formats.
 local function maskValueAtPixel(p)
     -- Handle regular RGBA images and single-channel mask images.
     local a = p.A
@@ -607,6 +635,7 @@ local function maskValueAtPixel(p)
     return math.max(r, g, b)
 end
 
+-- Compute tight subject bounds from mask alpha, with optional expansion.
 local function buildMaskRegion(maskImg, w, h, expandN, alphaThreshold, downsample)
     local p = Pixel(maskImg)
     local stride = math.max(1, math.floor(downsample or 1))
@@ -660,6 +689,7 @@ local function buildMaskRegion(maskImg, w, h, expandN, alphaThreshold, downsampl
     }
 end
 
+-- Pre-sample mask occupancy in mesh bounds to avoid repeated GetPixel calls.
 local function buildMaskCache(maskImg, region, alphaThreshold)
     local w = maskImg.Width
     local h = maskImg.Height
@@ -683,6 +713,7 @@ local function buildMaskCache(maskImg, region, alphaThreshold)
     return { x0 = x0, y0 = y0, x1 = x1, y1 = y1, w = rw, h = rh, data = data }
 end
 
+-- Extract, resample, smooth, and expand contour points around masked subject.
 local function extractContourPoints(maskImg, region, alphaThreshold, contourSpacing, borderExpandPx)
     local mp = Pixel(maskImg)
     local thr = alphaThreshold or 0.01
@@ -727,6 +758,7 @@ local function extractContourPoints(maskImg, region, alphaThreshold, contourSpac
     local bestComp = nil
     local bestCompSize = 0
 
+    -- Find connected boundary components and keep the largest one (main silhouette).
     for i = 1, #boundaryPts do
         local seed = boundaryPts[i]
         local seedKey = tostring(seed.ix) .. ":" .. tostring(seed.iy)
@@ -736,6 +768,7 @@ local function extractContourPoints(maskImg, region, alphaThreshold, contourSpac
             visited[seedKey] = true
             local comp = {}
 
+            -- Flood fill over 8-neighborhood boundary pixels.
             while qHead <= #q do
                 local p = q[qHead]
                 qHead = qHead + 1
@@ -769,6 +802,8 @@ local function extractContourPoints(maskImg, region, alphaThreshold, contourSpac
     if #pts < 8 then return nil end
 
     local cx, cy = 0.0, 0.0
+    -- Quantize contour candidates by angle around centroid and keep the farthest
+    -- point per angle-bin to build a clean outer envelope.
     for i = 1, #pts do
         cx = cx + pts[i].x
         cy = cy + pts[i].y
@@ -852,9 +887,11 @@ local function extractContourPoints(maskImg, region, alphaThreshold, contourSpac
         local segIdx = 1
         local segPos = 0.0
 
+        -- Uniformly place `count` samples by walking arc-length along polygon edges.
         for si = 0, count - 1 do
             local targetDist = si * step
 
+            -- Advance to the segment that contains this target distance.
             while segIdx <= n and (segPos + segLen[segIdx]) < targetDist do
                 segPos = segPos + segLen[segIdx]
                 segIdx = segIdx + 1
@@ -925,9 +962,11 @@ local function extractContourPoints(maskImg, region, alphaThreshold, contourSpac
     return out
 end
 
+-- Build deform mesh (contour + interior points + constrained triangulation).
 local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpandPx, maskImg, alphaThreshold, interiorJitter)
     local thr = alphaThreshold or 0.01
     local mp = Pixel(maskImg)
+    -- Fast point-in-mask probe used for point filtering/triangle validation.
     local function isInsideMask(px, py)
         local sx = clamp(math.floor(px + 0.5), 0, maskImg.Width - 1)
         local sy = clamp(math.floor(py + 0.5), 0, maskImg.Height - 1)
@@ -940,6 +979,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
 
     local interior = {}
     local seen = {}
+    -- Deduplicate interior samples on integer pixel grid.
     local function addInterior(x, y)
         local k = tostring(math.floor(x + 0.5)) .. ":" .. tostring(math.floor(y + 0.5))
         if not seen[k] then
@@ -983,6 +1023,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
         addInterior(cx / contourCount, cy / contourCount)
     end
 
+    -- Bowyer-Watson Delaunay triangulation over sampled points.
     local function delaunay(pts)
         if #pts < 3 then return {} end
         local all = {}
@@ -1020,6 +1061,8 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
         end
 
         local triangles = { { 1, 2, 3 } }
+        -- Insert points one-by-one: remove triangles whose circumcircle contains
+        -- the point, then retriangulate the exposed polygonal cavity.
         for pi = 4, #all do
             local bad = {}
             local edges = {}
@@ -1028,6 +1071,8 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
                 if circumContains(all[t[1]], all[t[2]], all[t[3]], all[pi]) then
                     bad[ti] = true
                     local e = { { t[1], t[2] }, { t[2], t[3] }, { t[3], t[1] } }
+                    -- Boundary extraction via edge parity:
+                    -- shared edges cancel, unique edges form cavity border.
                     for ei = 1, 3 do
                         local a = math.min(e[ei][1], e[ei][2])
                         local b = math.max(e[ei][1], e[ei][2])
@@ -1059,6 +1104,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
     -- If contour points are too far from interior, add bridge interior points near edges.
     if contourCount >= 1 and #interior >= 1 then
         local bridgeLimit = math.max(interiorSpacing * 1.25, 8.0)
+        -- Ensure contour vertices are not too far from nearest interior support.
         for ci = 1, contourCount do
             local c = contour[ci]
             local bestK, bestD2 = nil, 1e18
@@ -1098,6 +1144,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
 
         -- Also bridge contour edge midpoints, not just contour vertices.
         if contourCount >= 2 then
+            -- Also bridge edge midpoints to avoid long unsupported contour strips.
             for ci = 1, contourCount do
                 local cj = (ci % contourCount) + 1
                 local mx = (contour[ci].x + contour[cj].x) * 0.5
@@ -1142,6 +1189,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
 
     -- Guaranteed inner support layer: add interior points just inside contour.
     if contourCount >= 8 then
+        -- Add an inner ring near contour so boundary deformation stays stable.
         local ccx, ccy = 0.0, 0.0
         for i = 1, contourCount do
             ccx = ccx + contour[i].x
@@ -1232,6 +1280,8 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
             local cax = (c.x + a.x) * 0.5
             local cay = (c.y + a.y) * 0.5
 
+            -- Multi-sample inside test (vertices + centroid + edge midpoints)
+            -- rejects most exterior/invalid faces while keeping boundary slivers.
             local insideVotes = 0
             if isInsideMask(a.x, a.y) then insideVotes = insideVotes + 1 end
             if isInsideMask(b.x, b.y) then insideVotes = insideVotes + 1 end
@@ -1254,6 +1304,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
         local maxAttach = math.max(interiorSpacing * 3.2, contourSpacing * 2.0, borderExpandPx + 12.0, 18.0)
         local maxAttach2 = maxAttach * maxAttach
         local used = {}
+        -- Explicitly add contour-edge-to-interior triangles to guarantee linkage.
         for i = 1, contourCount do
             local j = (i % contourCount) + 1
             local mx = (verts[i].x + verts[j].x) * 0.5
@@ -1286,6 +1337,7 @@ local function buildGridMesh(region, interiorSpacing, contourSpacing, borderExpa
     return verts, tris
 end
 
+-- Draw a square point marker with configurable thickness in output image.
 local function drawMeshPoint(out, px, py, w, h, thickness, pix)
     for oy = -thickness + 1, thickness - 1 do
         for ox = -thickness + 1, thickness - 1 do
@@ -1298,6 +1350,7 @@ local function drawMeshPoint(out, px, py, w, h, thickness, pix)
     end
 end
 
+-- Draw line as repeated point stamps (simple raster utility for debug mesh).
 local function drawMeshLine(out, x0, y0, x1, y1, w, h, thickness, pix)
     local dx = x1 - x0
     local dy = y1 - y0
@@ -1318,6 +1371,7 @@ local function drawMeshLine(out, x0, y0, x1, y1, w, h, thickness, pix)
     end
 end
 
+-- Draw pin handle marker (white backing + colored crosshair).
 local function drawPinMarker(out, px, py, w, h, r, g, b)
     local outer = Pixel(out)
     outer.R = 1.0
@@ -1343,6 +1397,7 @@ local function drawPinMarker(out, px, py, w, h, r, g, b)
     drawMeshPoint(out, x, y, w, h, 2, cross)
 end
 
+-- Safe numeric getter for Fuse inputs (handles table/value wrappers).
 local function inputNumber(inp, req, def)
     local ok, v = pcall(function() return inp:GetValue(req) end)
     if (not ok) or v == nil then return def end
@@ -1357,6 +1412,7 @@ local function inputNumber(inp, req, def)
     return def
 end
 
+-- Safe point getter for PointControl-style inputs.
 local function inputPoint(inp, req, defX, defY)
     local ok, p = pcall(function() return inp:GetValue(req) end)
     if (not ok) or p == nil then return defX, defY end
@@ -1379,6 +1435,7 @@ local function inputPoint(inp, req, defX, defY)
     return x, y
 end
 
+-- Return pin falloff weight from normalized distance t (0 center -> 1 edge).
 local function computeFalloff(mode, t)
     -- t: 0 at pin center, 1 at radius edge
     t = clamp(t, 0.0, 1.0)
@@ -1395,12 +1452,14 @@ local function computeFalloff(mode, t)
     end
 end
 
+-- Compute final displacement vector at one mesh vertex from all active pins.
 local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, maxDisplacePx, rootLockEnabled, rootPx, rootPy, rootRadiusPx, rootLockStrength)
     local totalX, totalY = 0.0, 0.0
     local affected = false
     local maxAbsForce = -1.0
     local normWeight = 0.0
 
+    -- Accumulate per-pin forces at this vertex.
     for _, pin in ipairs(pins) do
         if x < pin.minx or x > pin.maxx or y < pin.miny or y > pin.maxy then
             goto continue_pin
@@ -1413,6 +1472,17 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
             local dist = math.sqrt(dist2)
             local t = dist / pin.radius
             local falloff = computeFalloff(falloffMode, t)
+            -- Stabilize the outer edge of pin influence: fade out aggressively near
+            -- radius boundary so the last vertex ring does not create seam rows.
+            if t > 0.90 then
+                local u = (1.0 - t) / 0.10
+                u = clamp(u, 0.0, 1.0)
+                local edgeFade = u * u * (3.0 - (2.0 * u))
+                falloff = falloff * edgeFade
+            end
+            if falloff < 1e-3 then
+                goto continue_pin
+            end
             if falloff > 1e-6 then
                 local ux, uy = 0.0, 0.0
                 if dist > 1e-6 then
@@ -1443,6 +1513,8 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
                 local absForce = math.sqrt((fx * fx) + (fy * fy))
                 if absForce > 1e-9 then
                     affected = true
+                    -- Influence composition:
+                    -- 0=Additive, 1=Strongest pin only, 2=Normalized blend.
                     if influenceMode == 1 then
                         if absForce > maxAbsForce then
                             maxAbsForce = absForce
@@ -1495,18 +1567,23 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
     return totalX, totalY, true
 end
 
+-- Warp one source triangle into deformed triangle using barycentric mapping.
 local function warpMeshTriangle(out, srcImg, a0, b0, c0, a1, b1, c1, w, h, qualityMode, sp, dp)
     local den = ((b1.y - c1.y) * (a1.x - c1.x)) + ((c1.x - b1.x) * (a1.y - c1.y))
     if math.abs(den) < 1e-8 then return end
 
-    local minX = math.max(0, math.floor(math.min(a1.x, math.min(b1.x, c1.x))))
-    local maxX = math.min(w - 1, math.floor(math.max(a1.x, math.max(b1.x, c1.x))))
-    local minY = math.max(0, math.floor(math.min(a1.y, math.min(b1.y, c1.y))))
-    local maxY = math.min(h - 1, math.floor(math.max(a1.y, math.max(b1.y, c1.y))))
+    -- Use a conservative bbox to avoid dropping boundary pixels on shared triangle edges.
+    local minX = math.max(0, math.floor(math.min(a1.x, math.min(b1.x, c1.x)) - 0.5))
+    local maxX = math.min(w - 1, math.ceil(math.max(a1.x, math.max(b1.x, c1.x)) + 0.5))
+    local minY = math.max(0, math.floor(math.min(a1.y, math.min(b1.y, c1.y)) - 0.5))
+    local maxY = math.min(h - 1, math.ceil(math.max(a1.y, math.max(b1.y, c1.y)) + 0.5))
 
     if maxX < minX or maxY < minY then return end
 
-    local eps = -1e-4
+    -- Slightly relaxed edge test helps produce watertight fills across adjacent triangles.
+    local eps = -1.5e-3
+    -- Rasterize destination triangle and back-project each covered pixel into
+    -- source triangle using barycentric coordinates.
     for y = minY, maxY do
         local py = y + 0.5
         for x = minX, maxX do
@@ -1540,12 +1617,14 @@ end
 
 -- Main Process Function
 function Process(req)
+    -- Periodic incremental GC step keeps long interactive sessions stable.
     RuntimeCache.frame = RuntimeCache.frame + 1
     if (RuntimeCache.frame % 30) == 0 then
         -- Keep Lua heap from growing during long interactive drags.
         collectgarbage("step", 64)
     end
 
+    -- Fetch and validate input frame.
     local img = InImage:GetValue(req)
     if not img then return end
 
@@ -1556,6 +1635,7 @@ function Process(req)
         return
     end
 
+    -- Read all mesh controls for this request/frame.
     local minDim = math.min(w, h)
     local rigMode = math.floor(clamp(inputNumber(InRigMode, req, 0), 0, 1)) -- 0=Setup, 1=Animate
     local canDeform = (rigMode == 1)
@@ -1578,12 +1658,14 @@ function Process(req)
     local meshColorR = clamp(inputNumber(InMeshColor, req, 0.95), 0.0, 1.0)
     local meshColorG = clamp(inputNumber(InMeshColorG, req, 0.2), 0.0, 1.0)
     local meshColorB = clamp(inputNumber(InMeshColorB, req, 0.2), 0.0, 1.0)
+    -- Select mesh source image (primary image or optional mesh mask input).
     local meshSrc = img
     if useMeshMask then
         local okMask, maskIn = pcall(function() return InMeshMask:GetValue(req) end)
         if okMask and maskIn then meshSrc = maskIn end
     end
 
+    -- Mesh cache key captures all settings that affect geometry.
     local meshKey = string.format(
         "%dx%d|%d|%.3f|%d|%.3f|%.3f|%.3f|%.3f|%d|%.3f",
         w, h,
@@ -1597,6 +1679,7 @@ function Process(req)
         meshRebuild,
         meshRebuild == 1 and req.Time or 0
     )
+    -- Rebuild mesh only when relevant settings actually changed.
     if MeshCache.key ~= meshKey then
         local region = buildMaskRegion(meshSrc, w, h, meshExpand, maskAlphaThreshold, maskDownsample)
         local verts, tris = buildGridMesh(region, interiorSpacing, contourSpacing, borderExpandPx, meshSrc, maskAlphaThreshold, interiorJitter)
@@ -1612,6 +1695,7 @@ function Process(req)
     local meshTris = MeshCache.tris
     local meshMaskCache = MeshCache.mask
 
+    -- Read deformation/solver/debug controls.
     local falloffMode = math.floor(clamp(inputNumber(InFalloffMode, req, 1), 0, 2))
     local influenceMode = math.floor(clamp(inputNumber(InInfluenceMode, req, 0), 0, 2))
     local maxDisplaceN = clamp(inputNumber(InMaxDisplace, req, 0.20), 0.001, 2.0)
@@ -1623,6 +1707,7 @@ function Process(req)
     local rootLockStrength = clamp(inputNumber(InRootLockStrength, req, 1.0), 0.0, 1.0)
     local useWeightMask = inputNumber(InUseWeightMask, req, 0) >= 0.5
     local weightMaskLock = clamp(inputNumber(InWeightMaskLock, req, 1.0), 0.0, 1.0)
+    -- Optional weight mask lock setup.
     local weightMaskImg = nil
     local weightMaskPixel = nil
     if useWeightMask and weightMaskLock > 1e-6 then
@@ -1637,6 +1722,7 @@ function Process(req)
         useWeightMask = false
     end
 
+    -- Optional root lock setup.
     local rootPx, rootPy, rootRadiusPx = 0.0, 0.0, 1.0
     if rootLockEnabled and rootLockStrength > 1e-6 then
         local rxNorm, ryNorm = inputPoint(InRootLockPos, req, 0.5, 0.5)
@@ -1648,6 +1734,7 @@ function Process(req)
         rootLockEnabled = false
     end
 
+    -- Build active pin runtime structs and active influence bounds.
     local pins = RuntimeCache.pins
     local activePins = RuntimeCache.activePins
     local prevPinX = RuntimeCache.prevPinX
@@ -1713,7 +1800,8 @@ function Process(req)
                 if activeMag > 1e-4 then
                     activePinCount = activePinCount + 1
                     activePins[activePinCount] = p
-                    local pad = math.max(2.0, maxDisplacePx * 0.25)
+                    -- Keep deformation bounds conservative to avoid seam flicker at radius edges.
+                    local pad = math.max(4.0, maxDisplacePx + 2.0)
                     local px0 = math.floor(math.min(p.bindX, p.px) - p.radius - pad)
                     local py0 = math.floor(math.min(p.bindY, p.py) - p.radius - pad)
                     local px1 = math.floor(math.max(p.bindX, p.px) + p.radius + pad)
@@ -1730,9 +1818,11 @@ function Process(req)
         end
     end
 
+    -- Trim reused tables when active pin count shrinks.
     for i = pinCount + 1, #pins do pins[i] = nil end
     for i = activePinCount + 1, #activePins do activePins[i] = nil end
 
+    -- Fast exits when nothing needs deformation or debug rendering.
     if pinCount == 0 and not meshDebug then
         OutImage:Set(req, img)
         return
@@ -1743,6 +1833,7 @@ function Process(req)
         return
     end
 
+    -- Clamp active update bounds to image extents.
     if activePinCount > 0 then
         ax0 = clamp(ax0, 0, w - 1)
         ay0 = clamp(ay0, 0, h - 1)
@@ -1750,6 +1841,7 @@ function Process(req)
         ay1 = clamp(ay1, 0, h - 1)
     end
 
+    -- Track short "interaction hold" window to keep interactive optimizations.
     if interacting then
         RuntimeCache.interactHold = 6
     elseif RuntimeCache.interactHold > 0 then
@@ -1759,16 +1851,15 @@ function Process(req)
 
     local liveQualityMode = qualityMode
     local liveDebugOverlay = debugOverlay
-    if canDeform and liveInteracting then
-        -- Interactive drag preview: keep radius unlimited, reduce per-frame cost.
-        liveQualityMode = 0
-    end
 
+    -- Output starts as copy of source; deformation writes into this image.
     local out = img:CopyOf()
     local deformedVerts = meshVerts
 
+    -- Deformation pass: move mesh vertices, clear old subject area, re-rasterize triangles.
     if meshVerts and meshTris and #meshVerts >= 3 and #meshTris >= 1 and activePinCount > 0 and canDeform then
         -- Clear original masked subject area first so displaced mesh doesn't leave a ghost behind.
+        -- Vertex solve pass.
         deformedVerts = DeformCache.verts
         for i = 1, #meshVerts do
             local vx = meshVerts[i].x
@@ -1807,6 +1898,7 @@ function Process(req)
             ::continue_vert::
         end
 
+        -- Clear old subject pixels in active region before writing warped mesh.
         local cp = Pixel(out)
         local mx0 = clamp(math.max(math.floor(meshRegion.x0), ax0), 0, w - 1)
         local my0 = clamp(math.max(math.floor(meshRegion.y0), ay0), 0, h - 1)
@@ -1833,8 +1925,10 @@ function Process(req)
             end
         end
 
+        -- Triangle warp pass (source mesh -> deformed mesh).
         local sp = Pixel(img)
         local dp = Pixel(out)
+        -- Triangle-by-triangle warp from bind mesh to deformed mesh.
         for ti = 1, #meshTris do
             local t = meshTris[ti]
             local a0 = meshVerts[t[1]]
@@ -1855,17 +1949,19 @@ function Process(req)
         end
 
         -- Fill small transparent holes produced by triangle raster gaps.
-        local bx0 = math.max(0, ax0 - 2)
-        local by0 = math.max(0, ay0 - 2)
-        local bx1 = math.min(w - 1, ax1 + 2)
-        local by1 = math.min(h - 1, ay1 + 2)
+        -- Post-fill tiny transparent cracks from triangle raster boundaries.
+        local bx0 = math.max(0, ax0 - 3)
+        local by0 = math.max(0, ay0 - 3)
+        local bx1 = math.min(w - 1, ax1 + 3)
+        local by1 = math.min(h - 1, ay1 + 3)
 
         local p0 = Pixel(out)
         local pn = Pixel(out)
         local pf = Pixel(out)
         local holeFillPasses = 0
         if canDeform and liveInteracting then
-            holeFillPasses = 0
+            -- Keep at least one pass while moving to avoid temporal seam flicker.
+            holeFillPasses = 1
         elseif qualityMode == 1 then
             if #meshTris > 1800 then
                 holeFillPasses = 1
@@ -1874,12 +1970,14 @@ function Process(req)
             end
         end
 
+        -- Local hole-fill around active bounds to hide tiny raster cracks.
         for _ = 1, holeFillPasses do
             for y = by0, by1 do
                 for x = bx0, bx1 do
                     out:GetPixel(x, y, p0)
                     if (tonumber(p0.A) or 0.0) <= 1e-6 then
                         local sr, sg, sb, sa, c = 0.0, 0.0, 0.0, 0.0, 0
+                        -- 8-neighbor gather + average of non-transparent samples.
                         for oy = -1, 1 do
                             for ox = -1, 1 do
                                 if not (ox == 0 and oy == 0) then
@@ -1913,6 +2011,7 @@ function Process(req)
         end
     end
 
+    -- Optional influence visualization overlay.
     if liveDebugOverlay and #pins > 0 then
         local ov = Pixel(out)
         local ip = Pixel(out)
@@ -1931,6 +2030,7 @@ function Process(req)
         for y = y0, y1 do
             for x = x0, x1 do
                 local sumR, sumG, sumB, sumW = 0.0, 0.0, 0.0, 0.0
+                -- Blend overlapping pin contributions into a single debug color.
                 for i = 1, #pins do
                     local p = pins[i]
                     local dx = x - p.px
@@ -1968,6 +2068,7 @@ function Process(req)
 
     end
 
+    -- Draw pin handle markers.
     -- Tie pin marker visibility to the same toggle as influence overlay.
     if liveDebugOverlay and #pins > 0 then
         for i = 1, #pins do
@@ -1976,6 +2077,7 @@ function Process(req)
         end
     end
 
+    -- Optional mesh debug render (wireframe + sampled points).
     if meshDebug and deformedVerts then
         local mp = Pixel(out)
         mp.R = meshColorR
@@ -2003,9 +2105,11 @@ function Process(req)
         end
     end
 
+    -- Countdown for temporary mesh preview visibility.
     if MeshPreviewCountdown > 0 then
         MeshPreviewCountdown = MeshPreviewCountdown - 1
     end
 
+    -- Publish rendered output frame.
     OutImage:Set(req, out)
 end
