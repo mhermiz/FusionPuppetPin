@@ -71,6 +71,7 @@ RuntimeCache = {
     prevPinX = {},
     prevPinY = {},
     interactHold = 0,
+    wasInteracting = false,
     frame = 0,
 }
 
@@ -1456,8 +1457,10 @@ end
 local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, maxDisplacePx, rootLockEnabled, rootPx, rootPy, rootRadiusPx, rootLockStrength)
     local totalX, totalY = 0.0, 0.0
     local affected = false
-    local maxAbsForce = -1.0
+    local maxAbsForce2 = -1.0
     local normWeight = 0.0
+    local gaussEdge = math.exp(-4.5)
+    local gaussNorm = 1.0 - gaussEdge
 
     -- Accumulate per-pin forces at this vertex.
     for _, pin in ipairs(pins) do
@@ -1469,13 +1472,27 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
         local dy = y - pin.py
         local dist2 = (dx * dx) + (dy * dy)
         if dist2 < pin.r2 then
-            local dist = math.sqrt(dist2)
-            local t = dist / pin.radius
-            local falloff = computeFalloff(falloffMode, t)
+            local falloff
+            local dist = nil
+            local t = nil
+            if falloffMode == 2 then
+                -- Gaussian can work directly on squared normalized distance.
+                local t2 = dist2 * pin.invR2
+                falloff = (math.exp(-4.5 * t2) - gaussEdge) / gaussNorm
+                if falloff < 0.0 then falloff = 0.0 end
+            else
+                dist = math.sqrt(dist2)
+                t = dist * pin.invRadius
+                falloff = computeFalloff(falloffMode, t)
+            end
+
             -- Stabilize the outer edge of pin influence: fade out aggressively near
             -- radius boundary so the last vertex ring does not create seam rows.
+            if t == nil then
+                t = math.sqrt(dist2) * pin.invRadius
+            end
             if t > 0.90 then
-                local u = (1.0 - t) / 0.10
+                local u = (1.0 - t) * 10.0
                 u = clamp(u, 0.0, 1.0)
                 local edgeFade = u * u * (3.0 - (2.0 * u))
                 falloff = falloff * edgeFade
@@ -1485,24 +1502,26 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
             end
             if falloff > 1e-6 then
                 local ux, uy = 0.0, 0.0
-                if dist > 1e-6 then
-                    ux = dx / dist
-                    uy = dy / dist
+                local needRadial = (math.abs(pin.expansion) > 1e-6) or (math.abs(pin.rotationRad) > 1e-6)
+                if needRadial and dist2 > 1e-12 then
+                    local invDist = 1.0 / math.sqrt(dist2)
+                    ux = dx * invDist
+                    uy = dy * invDist
                 end
 
                 -- Pull translates nearby vertices by pin movement delta from bind pose.
-                local mdx = pin.px - pin.bindX
-                local mdy = pin.py - pin.bindY
-                local fx = mdx * pin.pull * falloff
-                local fy = mdy * pin.pull * falloff
+                local fx = pin.moveX * pin.pull * falloff
+                local fy = pin.moveY * pin.pull * falloff
 
                 -- Expansion moves vertices radially around the pin.
-                local expForce = pin.expansion * pin.radius * falloff
-                fx = fx + (ux * expForce)
-                fy = fy + (uy * expForce)
+                if math.abs(pin.expansion) > 1e-6 then
+                    local expForce = pin.expansion * pin.radius * falloff
+                    fx = fx + (ux * expForce)
+                    fy = fy + (uy * expForce)
+                end
 
                 -- Rotation moves vertices tangentially around the pin.
-                if math.abs(pin.rotationRad) > 1e-6 and dist > 1e-6 then
+                if math.abs(pin.rotationRad) > 1e-6 and dist2 > 1e-12 then
                     local tx = -uy
                     local ty = ux
                     local rotForce = pin.rotationRad * pin.radius * 0.35 * falloff
@@ -1510,14 +1529,14 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
                     fy = fy + (ty * rotForce)
                 end
 
-                local absForce = math.sqrt((fx * fx) + (fy * fy))
-                if absForce > 1e-9 then
+                local force2 = (fx * fx) + (fy * fy)
+                if force2 > 1e-12 then
                     affected = true
                     -- Influence composition:
                     -- 0=Additive, 1=Strongest pin only, 2=Normalized blend.
                     if influenceMode == 1 then
-                        if absForce > maxAbsForce then
-                            maxAbsForce = absForce
+                        if force2 > maxAbsForce2 then
+                            maxAbsForce2 = force2
                             totalX = fx
                             totalY = fy
                         end
@@ -1546,9 +1565,10 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
     if rootLockEnabled then
         local rdx = x - rootPx
         local rdy = y - rootPy
-        local rdist = math.sqrt(rdx * rdx + rdy * rdy)
-        if rdist < rootRadiusPx then
-            local rt = rdist / rootRadiusPx
+        local rdist2 = (rdx * rdx) + (rdy * rdy)
+        local rr2 = rootRadiusPx * rootRadiusPx
+        if rdist2 < rr2 then
+            local rt = math.sqrt(rdist2) / rootRadiusPx
             local rootFalloff = computeFalloff(1, rt)
             local lockAmount = clamp(rootLockStrength * rootFalloff, 0.0, 1.0)
             local keep = 1.0 - lockAmount
@@ -1557,9 +1577,10 @@ local function computePinDisplacementAt(x, y, pins, influenceMode, falloffMode, 
         end
     end
 
-    local dispMag = math.sqrt(totalX * totalX + totalY * totalY)
-    if dispMag > maxDisplacePx and dispMag > 1e-6 then
-        local s = maxDisplacePx / dispMag
+    local dispMag2 = (totalX * totalX) + (totalY * totalY)
+    local maxDisp2 = maxDisplacePx * maxDisplacePx
+    if dispMag2 > maxDisp2 and dispMag2 > 1e-12 then
+        local s = maxDisplacePx / math.sqrt(dispMag2)
         totalX = totalX * s
         totalY = totalY * s
     end
@@ -1789,14 +1810,16 @@ function Process(req)
                 p.rotationRad = (rotationDeg * math.pi) / 180.0
                 p.expansion = expansion
                 p.radius = r
+                p.invRadius = 1.0 / r
                 p.r2 = r * r
+                p.invR2 = 1.0 / p.r2
                 p.minx = px - r
                 p.maxx = px + r
                 p.miny = py - r
                 p.maxy = py + r
-                local mdx = p.px - p.bindX
-                local mdy = p.py - p.bindY
-                local activeMag = math.abs(mdx * p.pull) + math.abs(mdy * p.pull) + math.abs(p.rotationRad * p.radius) + math.abs(p.expansion * p.radius)
+                p.moveX = p.px - p.bindX
+                p.moveY = p.py - p.bindY
+                local activeMag = math.abs(p.moveX * p.pull) + math.abs(p.moveY * p.pull) + math.abs(p.rotationRad * p.radius) + math.abs(p.expansion * p.radius)
                 if activeMag > 1e-4 then
                     activePinCount = activePinCount + 1
                     activePins[activePinCount] = p
@@ -1849,6 +1872,19 @@ function Process(req)
     end
     local liveInteracting = (RuntimeCache.interactHold > 0)
 
+    -- Interaction-aware GC policy:
+    -- - while dragging: frequent small steps to avoid heap spikes
+    -- - on drag end: one full sweep to reclaim temporary allocations
+    if liveInteracting then
+        collectgarbage("step", 128)
+    else
+        if RuntimeCache.wasInteracting then
+            collectgarbage("collect")
+        end
+        collectgarbage("step", 48)
+    end
+    RuntimeCache.wasInteracting = liveInteracting
+
     local liveQualityMode = qualityMode
     local liveDebugOverlay = debugOverlay
 
@@ -1896,6 +1932,10 @@ function Process(req)
                 deformedVerts[i] = dv
             end
             ::continue_vert::
+        end
+        -- If mesh was rebuilt smaller, drop stale cached vertices from prior larger mesh.
+        for i = #meshVerts + 1, #deformedVerts do
+            deformedVerts[i] = nil
         end
 
         -- Clear old subject pixels in active region before writing warped mesh.
