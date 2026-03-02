@@ -13,6 +13,7 @@ Current build includes:
 - Root lock + optional secondary weight mask
 - Debug overlays and pin color visualization
 - Runtime optimizations via mesh/mask caching
+- Follower and wave deformers
 
 ## Features (Current)
 - **Mesh**
@@ -31,9 +32,13 @@ Current build includes:
   - Influence mixing when pins overlap
   - Optional root lock stabilization
   - Optional weight-mask locking
+- **Deformers**
+- **Follower**: source/target pin linking with per-deformer Follow X, Follow Y, Follow Rotation, Follow Expansion
+- **Wave**: base/start/end pin chain motion with Amplitude, Frequency, Speed, Phase, Stretch
+- Multiple follower and wave deformers with per-slot enable toggles
 
 ## Installation
-1. Copy `PuppetPin_v1.0.fuse` into your Fusion Fuses folder.
+1. Copy `RigFX_v1.1.fuse` into your Fusion Fuses folder.
 2. Restart DaVinci Resolve/Fusion (or reload Fuses).
 3. Add **Puppet Pin** from the custom tools category.
 
@@ -42,6 +47,8 @@ Current build includes:
 2. In **Mesh** tab, build/rebuild mesh.
 3. In **Pins** tab, enable and place pins in **Setup** mode.
 4. Switch to **Animate** mode and keyframe pin transforms.
+5. In **Deformers** tab, add and configure follower deformers (follow amount).
+6. Add and configure wave deformers for chain-style motion.
 5. Tune falloff/influence and optional masks as needed.
 
 ## Known Limitations
@@ -50,7 +57,7 @@ Current build includes:
 
 ## Roadmap
 - Improved contour quality and mesh cleanup
-- Deformer systems (Follower, Wave, IK/FK)
+- Deformer systems ( IK/FK)
 - Solver improvements (single/multi-frame/elastic behaviors)
 - Locator outputs and workflow polish
 
