@@ -1,14 +1,12 @@
 -- Register the Fuse
-FuRegisterClass("PuppetPin", CT_Tool, {
-    REGS_Name = "Puppet Pin",
+FuRegisterClass("RigFX_v1_0", CT_Tool, {
+    REGS_Name = "1mar.io1 RigFX_v1.0",
     REGS_Category = "Custom",
     REGS_OpIconString = "PP1",
 })
 
 -- Hard cap used for UI generation and runtime loops.
 local MAX_PINS = 32
-local MAX_FOLLOWERS = 8
-local MAX_WAVES = 8
 PinEnabled = {}
 PinPos = {}
 PinStrength = {}
@@ -46,32 +44,6 @@ InWeightMask = nil
 InUseWeightMask = nil
 InWeightMaskLock = nil
 InRigMode = nil
-InFollowerCount = nil
-InAddFollower = nil
-InRemoveFollower = nil
-FollowerEnable = {}
-FollowerSource = {}
-FollowerTarget = {}
-FollowerAmpX = {}
-FollowerAmpY = {}
-FollowerAmpRot = {}
-FollowerAmpExp = {}
-FollowerHeader = {}
-FollowerCountState = 1
-InWaveCount = nil
-InAddWave = nil
-InRemoveWave = nil
-WaveEnable = {}
-WaveBase = {}
-WaveStart = {}
-WaveEnd = {}
-WaveAmp = {}
-WaveFreq = {}
-WaveSpeed = {}
-WavePhase = {}
-WaveStretch = {}
-WaveHeader = {}
-WaveCountState = 1
 InLocatorEnable = nil
 InLocatorMode = nil
 
@@ -387,193 +359,14 @@ function Create()
     self:EndControlNest()
 
     self:BeginControlNest("Follower Deformer", "FollowerNest", false, {})
-    InAddFollower = self:AddInput("Add Follower", "AddFollower", {
-        LINKID_DataType = "Number",
-        INPID_InputControl = "ButtonControl",
-        INP_DoNotifyChanged = true,
-    })
-    InRemoveFollower = self:AddInput("Remove Follower", "RemoveFollower", {
-        LINKID_DataType = "Number",
-        INPID_InputControl = "ButtonControl",
-        INP_DoNotifyChanged = true,
-    })
-    for i = 1, MAX_FOLLOWERS do
-        FollowerHeader[i] = self:AddInput("Follower " .. i, "FollowerHeader" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "LabelControl",
-            IC_Visible = (i == 1),
-        })
-        FollowerEnable[i] = self:AddInput("Enable", "FollowerEnable" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "CheckboxControl",
-            INP_Integer = true,
-            INP_Default = (i == 1) and 1 or 0,
-            IC_Visible = (i == 1),
-        })
-        FollowerSource[i] = self:AddInput("Source Pin", "FollowerSource" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_Integer = true,
-            INP_MinScale = 1,
-            INP_MaxScale = MAX_PINS,
-            INP_MinAllowed = 1,
-            INP_MaxAllowed = MAX_PINS,
-            INP_Default = 1,
-            IC_Visible = (i == 1),
-        })
-        FollowerTarget[i] = self:AddInput("Target Pin", "FollowerTarget" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_Integer = true,
-            INP_MinScale = 1,
-            INP_MaxScale = MAX_PINS,
-            INP_MinAllowed = 1,
-            INP_MaxAllowed = MAX_PINS,
-            INP_Default = 2,
-            IC_Visible = (i == 1),
-        })
-        FollowerAmpX[i] = self:AddInput("Follow X", "FollowerAmpX" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -2.0,
-            INP_MaxScale = 2.0,
-            INP_Default = 1.0,
-            IC_Visible = (i == 1),
-        })
-        FollowerAmpY[i] = self:AddInput("Follow Y", "FollowerAmpY" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -2.0,
-            INP_MaxScale = 2.0,
-            INP_Default = 1.0,
-            IC_Visible = (i == 1),
-        })
-        FollowerAmpRot[i] = self:AddInput("Follow Rotation", "FollowerAmpRot" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -2.0,
-            INP_MaxScale = 2.0,
-            INP_Default = 0.0,
-            IC_Visible = (i == 1),
-        })
-        FollowerAmpExp[i] = self:AddInput("Follow Expansion", "FollowerAmpExp" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -2.0,
-            INP_MaxScale = 2.0,
-            INP_Default = 0.0,
-            IC_Visible = (i == 1),
-        })
-    end
-    self:AddInput("Delay/stacking in next pass", "FollowerPlaceholder", {
+    self:AddInput("Coming Soon: Follower", "FollowerPlaceholder", {
         LINKID_DataType = "Number",
         INPID_InputControl = "LabelControl",
     })
     self:EndControlNest()
 
     self:BeginControlNest("Wave Deformer", "WaveNest", false, {})
-    InAddWave = self:AddInput("Add Wave", "AddWave", {
-        LINKID_DataType = "Number",
-        INPID_InputControl = "ButtonControl",
-        INP_DoNotifyChanged = true,
-    })
-    InRemoveWave = self:AddInput("Remove Wave", "RemoveWave", {
-        LINKID_DataType = "Number",
-        INPID_InputControl = "ButtonControl",
-        INP_DoNotifyChanged = true,
-    })
-    for i = 1, MAX_WAVES do
-        WaveHeader[i] = self:AddInput("Wave " .. i, "WaveHeader" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "LabelControl",
-            IC_Visible = (i == 1),
-        })
-        WaveEnable[i] = self:AddInput("Enable", "WaveEnable" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "CheckboxControl",
-            INP_Integer = true,
-            INP_Default = 0,
-            IC_Visible = (i == 1),
-        })
-        WaveBase[i] = self:AddInput("Base Pin", "WaveBase" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_Integer = true,
-            INP_MinScale = 1,
-            INP_MaxScale = MAX_PINS,
-            INP_MinAllowed = 1,
-            INP_MaxAllowed = MAX_PINS,
-            INP_Default = 1,
-            IC_Visible = (i == 1),
-        })
-        WaveStart[i] = self:AddInput("Start Pin", "WaveStart" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_Integer = true,
-            INP_MinScale = 1,
-            INP_MaxScale = MAX_PINS,
-            INP_MinAllowed = 1,
-            INP_MaxAllowed = MAX_PINS,
-            INP_Default = 2,
-            IC_Visible = (i == 1),
-        })
-        WaveEnd[i] = self:AddInput("End Pin", "WaveEnd" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_Integer = true,
-            INP_MinScale = 1,
-            INP_MaxScale = MAX_PINS,
-            INP_MinAllowed = 1,
-            INP_MaxAllowed = MAX_PINS,
-            INP_Default = 6,
-            IC_Visible = (i == 1),
-        })
-        WaveAmp[i] = self:AddInput("Amplitude", "WaveAmp" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = 0.0,
-            INP_MaxScale = 0.25,
-            INP_MinAllowed = 0.0,
-            INP_MaxAllowed = 1.0,
-            INP_Default = 0.03,
-            IC_Visible = (i == 1),
-        })
-        WaveFreq[i] = self:AddInput("Frequency", "WaveFreq" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = 0.1,
-            INP_MaxScale = 6.0,
-            INP_MinAllowed = 0.01,
-            INP_MaxAllowed = 20.0,
-            INP_Default = 1.5,
-            IC_Visible = (i == 1),
-        })
-        WaveSpeed[i] = self:AddInput("Speed", "WaveSpeed" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -4.0,
-            INP_MaxScale = 4.0,
-            INP_Default = 1.0,
-            IC_Visible = (i == 1),
-        })
-        WavePhase[i] = self:AddInput("Phase", "WavePhase" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -6.283,
-            INP_MaxScale = 6.283,
-            INP_Default = 0.0,
-            IC_Visible = (i == 1),
-        })
-        WaveStretch[i] = self:AddInput("Stretch", "WaveStretch" .. i, {
-            LINKID_DataType = "Number",
-            INPID_InputControl = "SliderControl",
-            INP_MinScale = -0.5,
-            INP_MaxScale = 0.5,
-            INP_Default = 0.0,
-            IC_Visible = (i == 1),
-        })
-    end
-    self:AddInput("Use ordered pin IDs as chain", "WaveHint", {
+    self:AddInput("Coming Soon: Wave", "WavePlaceholder", {
         LINKID_DataType = "Number",
         INPID_InputControl = "LabelControl",
     })
@@ -744,107 +537,8 @@ local function setRootLockUiVisible(enabled)
     InRootLockStrength:SetAttrs({ IC_Visible = show })
 end
 
-local function setFollowerSlotUiVisible(i, enabled)
-    local show = enabled and true or false
-    FollowerHeader[i]:SetAttrs({ IC_Visible = show })
-    FollowerEnable[i]:SetAttrs({ IC_Visible = show })
-    FollowerSource[i]:SetAttrs({ IC_Visible = show })
-    FollowerTarget[i]:SetAttrs({ IC_Visible = show })
-    FollowerAmpX[i]:SetAttrs({ IC_Visible = show })
-    FollowerAmpY[i]:SetAttrs({ IC_Visible = show })
-    FollowerAmpRot[i]:SetAttrs({ IC_Visible = show })
-    FollowerAmpExp[i]:SetAttrs({ IC_Visible = show })
-end
-
-local function setWaveSlotUiVisible(i, enabled)
-    local show = enabled and true or false
-    WaveHeader[i]:SetAttrs({ IC_Visible = show })
-    WaveEnable[i]:SetAttrs({ IC_Visible = show })
-    WaveBase[i]:SetAttrs({ IC_Visible = show })
-    WaveStart[i]:SetAttrs({ IC_Visible = show })
-    WaveEnd[i]:SetAttrs({ IC_Visible = show })
-    WaveAmp[i]:SetAttrs({ IC_Visible = show })
-    WaveFreq[i]:SetAttrs({ IC_Visible = show })
-    WaveSpeed[i]:SetAttrs({ IC_Visible = show })
-    WavePhase[i]:SetAttrs({ IC_Visible = show })
-    WaveStretch[i]:SetAttrs({ IC_Visible = show })
-end
-
-local function applyFollowerCountVisibility(count)
-    local n = math.floor(count or 0)
-    if n < 0 then n = 0 end
-    if n > MAX_FOLLOWERS then n = MAX_FOLLOWERS end
-    for i = 1, MAX_FOLLOWERS do
-        setFollowerSlotUiVisible(i, i <= n)
-    end
-end
-
-local function applyWaveCountVisibility(count)
-    local n = math.floor(count or 0)
-    if n < 0 then n = 0 end
-    if n > MAX_WAVES then n = MAX_WAVES end
-    for i = 1, MAX_WAVES do
-        setWaveSlotUiVisible(i, i <= n)
-    end
-end
-
-local function readCountInput(inp, time, fallback)
-    local ok, v = pcall(function() return inp:GetValue(time) end)
-    if ok and v ~= nil then
-        if type(v) == "number" then return v end
-        local okVal, vv = pcall(function() return v.Value end)
-        if okVal and type(vv) == "number" then return vv end
-        local n = tonumber(v)
-        if n ~= nil then return n end
-    end
-    return fallback
-end
-
-local function writeCountInput(inp, time, value)
-    local v = math.floor(value + 0.5)
-    local wrote = false
-    local okSet = pcall(function() inp:Set(time, v) end)
-    if okSet then wrote = true end
-    local okSetValue = pcall(function() inp:SetValue(v, time) end)
-    if okSetValue then wrote = true end
-    local okIndex = pcall(function() inp[time] = v end)
-    if okIndex then wrote = true end
-    pcall(function() inp:SetAttrs({ INP_Default = v }) end)
-    return wrote
-end
-
 -- Handle inspector interactions that need immediate side effects.
 function NotifyChanged(inp, param, time)
-    local t = tonumber(time) or 0
-
-    if inp == InAddFollower or inp == InRemoveFollower then
-        -- Button controls can fire on press/release; only act on press.
-        if param == nil or (tonumber(param.Value) or 0) < 0.5 then
-            return
-        end
-        if inp == InAddFollower then
-            FollowerCountState = math.min(MAX_FOLLOWERS, math.floor((FollowerCountState or 1) + 1))
-        else
-            FollowerCountState = math.max(0, math.floor((FollowerCountState or 1) - 1))
-        end
-        applyFollowerCountVisibility(FollowerCountState)
-        return
-    end
-
-    if inp == InAddWave or inp == InRemoveWave then
-        -- Button controls can fire on press/release; only act on press.
-        if param == nil or (tonumber(param.Value) or 0) < 0.5 then
-            return
-        end
-        if inp == InAddWave then
-            WaveCountState = math.min(MAX_WAVES, math.floor((WaveCountState or 1) + 1))
-        else
-            WaveCountState = math.max(0, math.floor((WaveCountState or 1) - 1))
-        end
-        applyWaveCountVisibility(WaveCountState)
-        return
-    end
-
     if param == nil then return end
 
     if inp == InRebuildMeshButton then
@@ -2125,132 +1819,25 @@ function Process(req)
                 p.maxy = py + r
                 p.moveX = p.px - p.bindX
                 p.moveY = p.py - p.bindY
+                local activeMag = math.abs(p.moveX * p.pull) + math.abs(p.moveY * p.pull) + math.abs(p.rotationRad * p.radius) + math.abs(p.expansion * p.radius)
+                if activeMag > 1e-4 then
+                    activePinCount = activePinCount + 1
+                    activePins[activePinCount] = p
+                    -- Keep deformation bounds conservative to avoid seam flicker at radius edges.
+                    local pad = math.max(4.0, maxDisplacePx + 2.0)
+                    local px0 = math.floor(math.min(p.bindX, p.px) - p.radius - pad)
+                    local py0 = math.floor(math.min(p.bindY, p.py) - p.radius - pad)
+                    local px1 = math.floor(math.max(p.bindX, p.px) + p.radius + pad)
+                    local py1 = math.floor(math.max(p.bindY, p.py) + p.radius + pad)
+                    if px0 < ax0 then ax0 = px0 end
+                    if py0 < ay0 then ay0 = py0 end
+                    if px1 > ax1 then ax1 = px1 end
+                    if py1 > ay1 then ay1 = py1 end
+                end
             end
         else
             prevPinX[i] = nil
             prevPinY[i] = nil
-        end
-    end
-
-    -- Apply follower offsets after all pins are collected so source/target lookup is stable.
-    if canDeform and pinCount > 1 then
-        for fi = 1, MAX_FOLLOWERS do
-            if inputNumber(FollowerEnable[fi], req, (fi == 1) and 1 or 0) >= 0.5 then
-                local followerSource = math.floor(clamp(inputNumber(FollowerSource[fi], req, 1), 1, MAX_PINS))
-                local followerTarget = math.floor(clamp(inputNumber(FollowerTarget[fi], req, 2), 1, MAX_PINS))
-                if followerSource ~= followerTarget then
-                    local followerAmpX = inputNumber(FollowerAmpX[fi], req, 1.0)
-                    local followerAmpY = inputNumber(FollowerAmpY[fi], req, 1.0)
-                    local followerAmpRot = inputNumber(FollowerAmpRot[fi], req, 0.0)
-                    local followerAmpExp = inputNumber(FollowerAmpExp[fi], req, 0.0)
-
-                    local srcPin = nil
-                    local tgtPin = nil
-                    for i = 1, pinCount do
-                        local p = pins[i]
-                        if p.idx == followerSource then srcPin = p end
-                        if p.idx == followerTarget then tgtPin = p end
-                    end
-                    if srcPin and tgtPin then
-                        local sdx = srcPin.px - srcPin.bindX
-                        local sdy = srcPin.py - srcPin.bindY
-                        tgtPin.px = clamp(tgtPin.px + (sdx * followerAmpX), 0, w - 1)
-                        tgtPin.py = clamp(tgtPin.py + (sdy * followerAmpY), 0, h - 1)
-                        tgtPin.rotationRad = tgtPin.rotationRad + (srcPin.rotationRad * followerAmpRot)
-                        tgtPin.expansion = tgtPin.expansion + (srcPin.expansion * followerAmpExp)
-                    end
-                end
-            end
-        end
-    end
-
-    -- Wave v1: sinusoidal offset over pin-ID chain segment for cloth/hair motion.
-    if canDeform and pinCount > 1 then
-        for wi = 1, MAX_WAVES do
-            if inputNumber(WaveEnable[wi], req, 0) >= 0.5 then
-                local waveBase = math.floor(clamp(inputNumber(WaveBase[wi], req, 1), 1, MAX_PINS))
-                local waveStart = math.floor(clamp(inputNumber(WaveStart[wi], req, 2), 1, MAX_PINS))
-                local waveEnd = math.floor(clamp(inputNumber(WaveEnd[wi], req, 6), 1, MAX_PINS))
-                local waveAmpPx = clamp(inputNumber(WaveAmp[wi], req, 0.03), 0.0, 1.0) * minDim
-                local waveFreq = clamp(inputNumber(WaveFreq[wi], req, 1.5), 0.01, 20.0)
-                local waveSpeed = inputNumber(WaveSpeed[wi], req, 1.0)
-                local wavePhase = inputNumber(WavePhase[wi], req, 0.0)
-                local waveStretch = clamp(inputNumber(WaveStretch[wi], req, 0.0), -1.0, 1.0)
-
-                if waveAmpPx > 1e-6 then
-                    local chainLo = math.min(waveStart, waveEnd)
-                    local chainHi = math.max(waveStart, waveEnd)
-                    local chainSpan = math.max(1, chainHi - chainLo)
-                    local basePin = nil
-                    for i = 1, pinCount do
-                        if pins[i].idx == waveBase then
-                            basePin = pins[i]
-                            break
-                        end
-                    end
-
-                    if basePin then
-                        local timePhase = (req.Time or 0) * waveSpeed
-                        local twoPi = 2.0 * math.pi
-                        for i = 1, pinCount do
-                            local p = pins[i]
-                            local id = p.idx
-                            if id >= chainLo and id <= chainHi and id ~= waveBase then
-                                local tx = (id - chainLo) / chainSpan
-                                local bvx = p.bindX - basePin.bindX
-                                local bvy = p.bindY - basePin.bindY
-                                local bl = math.sqrt((bvx * bvx) + (bvy * bvy))
-                                if bl > 1e-6 then
-                                    local ux = bvx / bl
-                                    local uy = bvy / bl
-                                    local nx = -uy
-                                    local ny = ux
-
-                                    local phase = wavePhase + timePhase + (tx * waveFreq * twoPi)
-                                    local s = math.sin(phase)
-                                    local c = math.cos(phase)
-
-                                    local amp = waveAmpPx * (0.6 + 0.4 * tx)
-                                    p.px = clamp(p.px + (nx * amp * s), 0, w - 1)
-                                    p.py = clamp(p.py + (ny * amp * s), 0, h - 1)
-
-                                    if math.abs(waveStretch) > 1e-6 then
-                                        local along = bl * waveStretch * c * 0.15 * (0.3 + 0.7 * tx)
-                                        p.px = clamp(p.px + (ux * along), 0, w - 1)
-                                        p.py = clamp(p.py + (uy * along), 0, h - 1)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- Rebuild active deformation set after follower constraints are applied.
-    for i = 1, pinCount do
-        local p = pins[i]
-        p.moveX = p.px - p.bindX
-        p.moveY = p.py - p.bindY
-        p.minx = p.px - p.radius
-        p.maxx = p.px + p.radius
-        p.miny = p.py - p.radius
-        p.maxy = p.py + p.radius
-        local activeMag = math.abs(p.moveX * p.pull) + math.abs(p.moveY * p.pull) + math.abs(p.rotationRad * p.radius) + math.abs(p.expansion * p.radius)
-        if activeMag > 1e-4 then
-            activePinCount = activePinCount + 1
-            activePins[activePinCount] = p
-            -- Keep deformation bounds conservative to avoid seam flicker at radius edges.
-            local pad = math.max(4.0, maxDisplacePx + 2.0)
-            local px0 = math.floor(math.min(p.bindX, p.px) - p.radius - pad)
-            local py0 = math.floor(math.min(p.bindY, p.py) - p.radius - pad)
-            local px1 = math.floor(math.max(p.bindX, p.px) + p.radius + pad)
-            local py1 = math.floor(math.max(p.bindY, p.py) + p.radius + pad)
-            if px0 < ax0 then ax0 = px0 end
-            if py0 < ay0 then ay0 = py0 end
-            if px1 > ax1 then ax1 = px1 end
-            if py1 > ay1 then ay1 = py1 end
         end
     end
 
