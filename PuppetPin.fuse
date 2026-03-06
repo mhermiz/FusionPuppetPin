@@ -1742,6 +1742,17 @@ local function inputPoint(inp, req, defX, defY)
     return x, y
 end
 
+local function resolveWaveTime(req)
+    local rt = tonumber(req and req.Time)
+    if rt ~= nil then return rt end
+    local ok, ct = pcall(function() return comp.CurrentTime end)
+    if ok then
+        ct = tonumber(ct)
+        if ct ~= nil then return ct end
+    end
+    return 0
+end
+
 -- Return pin falloff weight from normalized distance t (0 center -> 1 edge).
 local function computeFalloff(mode, t)
     -- t: 0 at pin center, 1 at radius edge
@@ -1965,6 +1976,7 @@ function Process(req)
     -- Read all mesh controls for this request/frame.
     local minDim = math.min(w, h)
     local rigMode = math.floor(clamp(inputNumber(InRigMode, req, 0), 0, 1)) -- 0=Setup, 1=Animate
+    local waveTime = resolveWaveTime(req)
     local canDeform = (rigMode == 1)
     local useMeshMask = inputNumber(InUseMeshMask, req, 0) >= 0.5
     local meshRebuild = math.floor(clamp(inputNumber(InMeshRebuild, req, 1), 0, 1))
@@ -2190,7 +2202,7 @@ function Process(req)
                     end
 
                     if basePin then
-                        local timePhase = (req.Time or 0) * waveSpeed
+                        local timePhase = waveTime * waveSpeed
                         local twoPi = 2.0 * math.pi
                         for i = 1, pinCount do
                             local p = pins[i]
